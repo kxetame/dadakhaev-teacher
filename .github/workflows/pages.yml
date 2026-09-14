@@ -41,3 +41,29 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+      - name: Verify public website
+        env:
+          SITE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const base = process.env.SITE_URL.replace(/\/?$/, '/');
+          for (const [path, marker] of [['', 'Дадахаев Ибрагим Русланович'], ['lessons/drawing-1.html', 'Масштаб и размеры']]) {
+            let error;
+            for (let attempt = 0; attempt < 8; attempt++) {
+              try {
+                const url = new URL(path, base);
+                const response = await fetch(url, {signal: AbortSignal.timeout(15000)});
+                assert.equal(response.status, 200, 'HTTP status: ' + url);
+                assert.ok((await response.text()).includes(marker), 'Expected content: ' + url);
+                console.log('PASS: HTTP 200 and expected content at ' + url);
+                error = null;
+                break;
+              } catch (e) {
+                error = e;
+                if (attempt < 7) await new Promise(resolve => setTimeout(resolve, 5000));
+              }
+            }
+            if (error) throw error;
+          }
+          NODE
