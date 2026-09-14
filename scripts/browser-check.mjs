@@ -1,0 +1,78 @@
+import {chromium} from 'playwright';
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+const root=path.resolve('public');
+const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'};
+const server=http.createServer((req,res)=>{
+  const name=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
+  const file=path.resolve(root,'.'+(name.endsWith('/')?name+'index.html':name));
+  if(!file.startsWith(root+path.sep)||!fs.existsSync(file)){res.writeHead(404);res.end();return;}
+  res.setHeader('Content-Type',types[path.extname(file)]||'text/plain');
+  res.end(fs.readFileSync(file));
+});
+await new Promise(resolve=>server.listen(4173,'127.0.0.1',resolve));
+const browser=await chromium.launch();
+const errors=[];
+try {
+ const page=await browser.newPage({viewport:{width:1440,height:1000}});
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.route(/hits\.sh|fonts\.googleapis\.com|fonts\.gstatic\.com/,r=>r.abort());
+ await page.goto('http://127.0.0.1:4173/');
+ await page.locator('h1').waitFor();
+ assert.equal(await page.locator('.material:visible').count(),12);
+ await page.locator('#search').fill('масштаб');
+ assert.equal(await page.locator('.material:visible').count(),1);
+ await page.locator('#search').fill('zzzzzzzzzz');
+ assert.equal(await page.locator('.material:visible').count(),0);
+ assert.ok(await page.locator('#empty').isVisible());
+ await page.locator('[data-course-link="cad"]').click();
+ assert.equal(await page.locator('.material:visible').count(),3);
+ await page.locator('#level').selectOption('Начальный');
+ assert.equal(await page.locator('.material:visible').count(),1);
+ await page.locator('[data-course-link="drawing"]').click();
+ await page.locator('a[href="lessons/drawing-1.html"]').first().click();
+ await page.locator('.quiz input[value="0"]').check();
+ await page.locator('.quiz button').click();
+ assert.match(await page.locator('.quiz-result').innerText(),/Пока неверно/);
+ await page.locator('.quiz input[value="1"]').check();
+ await page.locator('.quiz button').click();
+ assert.match(await page.locator('.quiz-result').innerText(),/^Верно/);
+ await page.locator('#complete-lesson').click();
+ assert.equal(await page.locator('#complete-lesson').getAttribute('aria-pressed'),'true');
+ await page.reload();
+ assert.equal(await page.locator('#complete-lesson').getAttribute('aria-pressed'),'true');
+ await page.goto('http://127.0.0.1:4173/');
+ assert.equal(await page.locator('#progress-percent').innerText(),'8%');
+ await page.locator('#feedback-title').fill('Проверка масштаба');
+ await page.locator('#feedback-message').fill('Как проверить размер изображения при масштабе 1:2?');
+ await page.route('https://github.com/kxetame/dadakhaev-teacher/issues/new?*',route=>route.fulfill({contentType:'text/html',body:'<h1>Draft navigation intercepted: no issue created</h1>'}));
+ await page.locator('#feedback-form button').click();
+ await page.waitForURL('https://github.com/kxetame/dadakhaev-teacher/issues/new?*');
+ const destination=new URL(page.url());
+ assert.ok(destination.searchParams.get('title').includes('Проверка масштаба'));
+ assert.ok(destination.searchParams.get('body').includes('1:2'));
+ await page.goto('http://127.0.0.1:4173/');
+ fs.mkdirSync('screenshots',{recursive:true});
+ await page.screenshot({path:'screenshots/desktop.png',fullPage:true});
+ for(const width of [390,360]) {
+   await page.setViewportSize({width,height:844});
+   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth), 'Horizontal overflow at '+width);
+ }
+ await page.screenshot({path:'screenshots/mobile.png',fullPage:true});
+ await page.goto('http://127.0.0.1:4173/lessons/drawing-1.html');
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'Lesson mobile overflow');
+ await page.screenshot({path:'screenshots/lesson-mobile.png',fullPage:true});
+ const noStorage=await browser.newContext();
+ await noStorage.addInitScript(()=>Object.defineProperty(window,'localStorage',{get(){throw new Error('Storage disabled');}}));
+ const blocked=await noStorage.newPage();
+ await blocked.route(/hits\.sh|fonts\.googleapis\.com|fonts\.gstatic\.com/,r=>r.abort());
+ await blocked.goto('http://127.0.0.1:4173/lessons/drawing-1.html');
+ await blocked.locator('#complete-lesson').click();
+ assert.match(await blocked.locator('#lesson-storage-status').innerText(),/не разрешает сохранение/);
+ assert.equal(await blocked.locator('#complete-lesson').getAttribute('aria-pressed'),'true');
+ await noStorage.close();
+ assert.deepEqual(errors,[]);
+ console.log('PASS: search, filters, empty state, quiz, saved progress, feedback draft, mobile widths 360/390, storage denied, no JavaScript exceptions.');
+} finally {await browser.close();server.close();}
