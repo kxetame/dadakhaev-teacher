@@ -23,7 +23,7 @@ try {
  await page.locator('h1').waitFor();
  assert.equal(await page.locator('.material:visible').count(),12);
  await page.locator('#search').fill('масштаб');
- assert.equal(await page.locator('.material:visible').count(),1);
+ assert.deepEqual(await page.locator('.material:visible').evaluateAll(nodes=>nodes.map(n=>n.dataset.id)),['drawing-1','cad-3']);
  await page.locator('#search').fill('zzzzzzzzzz');
  assert.equal(await page.locator('.material:visible').count(),0);
  assert.ok(await page.locator('#empty').isVisible());
