@@ -1,6 +1,6 @@
 'use strict';
 (() => {
-  const ids = ["drawing-1","drawing-2","drawing-3","cad-1","cad-2","cad-3","docs-1","docs-2","docs-3","ui-1","ui-2","ui-3"];
+  const ids = ["docs-4","ui-4","docs-1","ui-1","drawing-1","cad-1","docs-5","ui-5","docs-2","ui-6","docs-6","ui-7","drawing-2","cad-2","docs-7","ui-2","ui-3","docs-8","docs-3","drawing-3","ui-8","cad-3"];
   const key = 'dadakhaev-study-progress-v1';
   let completed = new Set();
   let storageOk = true;
@@ -52,10 +52,12 @@
   function filter() {
     const query = normalize($('#search')?.value || '');
     const level = $('#level')?.value || '';
+    const month = $('#study-month')?.value || '';
     let count = 0;
     cards.forEach(card => {
       const visible = (course === 'all' || card.dataset.course === course)
         && (!level || card.dataset.level === level)
+        && (!month || card.dataset.studyDate?.startsWith(month))
         && normalize(card.dataset.search).includes(query);
       card.hidden = !visible;
       if (visible) count++;
@@ -69,10 +71,12 @@
     course = link.dataset.courseLink;
     if ($('#search')) $('#search').value = '';
     if ($('#level')) $('#level').value = '';
+    if ($('#study-month')) $('#study-month').value = '';
     filter();
   }));
   $('#search')?.addEventListener('input', filter);
   $('#level')?.addEventListener('change', filter);
+  $('#study-month')?.addEventListener('change', filter);
   $$('.quiz').forEach(form => form.addEventListener('submit', event => {
     event.preventDefault();
     const selected = form.querySelector('input[name="answer"]:checked');
